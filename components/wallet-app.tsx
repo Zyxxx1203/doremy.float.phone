@@ -217,8 +217,9 @@ function FamilyTab({ characters, cards, onChange }: { characters: ReturnType<typ
           <input value={label} onChange={e => setLabel(e.target.value)} placeholder="卡名" className="ui-input flex-1" />
           <input value={limit} onChange={e => setLimit(e.target.value)} inputMode="decimal" placeholder="月额度" className="ui-input w-28" />
         </div>
-        <button onClick={create} className="ui-btn ui-btn-primary mt-2 w-full">创建</button>
-        {message && <div className="mt-2 text-xs text-[var(--c-icon)]">{message}</div>}
+        <button onClick={create} disabled={!characters.length} className="ui-btn ui-btn-primary mt-2 w-full disabled:cursor-not-allowed disabled:opacity-45">创建亲属卡</button>
+        {!characters.length && <div className="mt-2 text-xs text-[#9a7650]">先创建至少一个角色，才能建立亲属卡。</div>}
+        {message && <div role="status" className="mt-2 text-xs text-[var(--c-icon)]">{message}</div>}
       </div>
 
       {cards.map(card => {
@@ -234,16 +235,17 @@ function FamilyTab({ characters, cards, onChange }: { characters: ReturnType<typ
               <span className={`rounded-full px-2 py-1 text-[10px] ${card.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{card.status === "active" ? "生效中" : "已暂停"}</span>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--c-input)]"><div className="h-full rounded-full bg-[var(--c-primary)]" style={{ width: Math.min(100, card.usedThisPeriod / card.monthlyLimit * 100) + "%" }} /></div>
-            <div className="mt-1 flex justify-between text-[11px] text-[var(--c-icon)]"><span>已用 {money(card.usedThisPeriod)}</span><span>剩余 {money(Math.max(0, card.monthlyLimit - card.usedThisPeriod))}</span></div>
+            <div className="mt-1 flex justify-between text-[11px] text-[var(--c-icon)]"><span>本周期已用 {money(card.usedThisPeriod)}</span><span>可用额度 {money(Math.max(0, card.monthlyLimit - card.usedThisPeriod))}</span></div>
             <div className="mt-3 flex gap-2">
-              <input value={spendAmount} onChange={e => setSpendAmount(e.target.value)} inputMode="decimal" className="ui-input w-20" />
-              <button onClick={() => { const r = spendWithFamilyCard(card.id, Number(spendAmount), "亲属卡消费", "钱包 App 测试消费"); if (!r.ok) notify(r.error || "操作失败", "error"); else notify("操作成功"); onChange(); }} className="ui-btn ui-btn-ghost flex-1">记一笔消费</button>
+              <input aria-label={card.label+"消费金额"} type="number" min="0.01" step="0.01" value={spendAmount} onChange={e => setSpendAmount(e.target.value)} inputMode="decimal" className="ui-input w-24" />
+              <button disabled={card.status!=="active"} onClick={() => { const r = spendWithFamilyCard(card.id, Number(spendAmount), "亲属卡消费", "亲属卡日常消费"); if (!r.ok) notify(r.error || "操作失败", "error"); else notify("消费已记录"); onChange(); }} className="ui-btn ui-btn-ghost flex-1 disabled:opacity-45">记一笔消费</button>
               <button onClick={() => { updateFamilyCard(card.id, { status: card.status === "active" ? "paused" : "active" }); onChange(); }} className="ui-btn ui-btn-ghost">{card.status === "active" ? "暂停" : "恢复"}</button>
             </div>
             {txs.slice(0, 3).map(tx => <div key={tx.id} className="mt-2 flex justify-between text-[11px] text-[var(--c-icon)]"><span>{time(tx.at)} · {tx.title}</span><span>{money(tx.amount)}</span></div>)}
           </div>
         );
       })}
+      {!cards.length && <div className="wallet-empty-state rounded-2xl p-6 text-center"><div className="mx-auto mb-2 grid h-11 w-11 place-items-center rounded-2xl bg-[#e9eee5] text-[#71806b]"><CreditCard size={20}/></div><div className="text-sm font-medium text-[#4d5148]">还没有亲属卡</div><p className="mt-1 text-xs text-[#8a8579]">创建后即可设置每月额度、记录消费并查看剩余额度。</p></div>}
     </div>
   );
 }
@@ -287,24 +289,26 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
         const txs = loadJointFundTransactions(fund.id);
         return (
           <div key={fund.id} className="wallet-section rounded-2xl p-4">
-            <div className="flex items-center justify-between">
-              <div><div className="text-sm font-medium text-[var(--c-text)]">{fund.name}</div><div className="text-[11px] text-[var(--c-icon)]">和 {character?.name || "角色"} 一起 · 目标 {money(fund.goalAmount)}</div></div>
-              <span className="text-sm font-semibold text-[var(--c-text)]">{money(fund.balance)}</span>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0"><div className="text-sm font-semibold text-[var(--c-text)]">{fund.name}</div><div className="mt-1 text-[11px] text-[var(--c-icon)]">和 {character?.name || "角色"} 一起 · 目标 {money(fund.goalAmount)}</div></div>
+              <div className="shrink-0 text-right"><div className="text-base font-semibold text-[#476c4e]">{money(fund.balance)}</div><div className="text-[10px] text-[var(--c-icon)]">已存入</div></div>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--c-input)]"><div className="h-full rounded-full bg-[var(--c-primary)]" style={{ width: Math.min(100, fund.balance / fund.goalAmount * 100) + "%" }} /></div>
+            <div className="mt-1 flex justify-between text-[10px] text-[var(--c-icon)]"><span>{Math.min(100,Math.round(fund.balance/fund.goalAmount*100))}% 已完成</span><span>{fund.balance>=fund.goalAmount?"目标已达成":`还差 {money(fund.goalAmount-fund.balance)}`}</span></div>
             <div className="mt-3 flex gap-2">
               <select value={member} onChange={e => setMember(e.target.value as "user" | "character")} className="ui-select w-24"><option value="user">我存</option><option value="character">TA 存</option></select>
               <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" className="ui-input w-24" />
               <button onClick={() => { const r = depositToJointFund(fund.id, member, member === "user" ? "user" : fund.characterId, Number(amount), "手动存入"); if (!r.ok) notify(r.error || "操作失败", "error"); else notify("操作成功"); onChange(); }} className="ui-btn ui-btn-primary flex-1">存入</button>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              <button onClick={() => { setJointFundPlan({ fundId: fund.id, memberType: "user", memberId: "user", cadence: "weekly", amount: Number(amount) || 50 }); onChange(); }} className="ui-btn ui-btn-ghost text-xs">每周自动存</button>
+              <button onClick={() => { setJointFundPlan({ fundId: fund.id, memberType: member, memberId: member === "user" ? "user" : fund.characterId, cadence: "weekly", amount: Number(amount) || 50 }); onChange(); notify(`已设置${member === "user" ? "你" : "TA"}每周自动存入`); }} className="ui-btn ui-btn-ghost text-xs">为{member === "user" ? "我" : "TA"}设置每周自动存</button>
               {plans.map(plan => <button key={plan.id} onClick={() => { removeJointFundPlan(plan.id); onChange(); }} className="ui-btn ui-btn-ghost text-xs">{plan.memberType === "user" ? "我" : "TA"} {plan.cadence === "weekly" ? "每周" : plan.cadence === "daily" ? "每日" : "每月"} {money(plan.amount)} · 取消</button>)}
             </div>
             {txs.slice(0, 3).map(tx => <div key={tx.id} className="mt-2 flex justify-between text-[11px] text-[var(--c-icon)]"><span>{time(tx.at)} · {tx.note}</span><span>{money(tx.amount)}</span></div>)}
           </div>
         );
       })}
+      {!funds.length && <div className="wallet-empty-state rounded-2xl p-6 text-center"><div className="mx-auto mb-2 grid h-11 w-11 place-items-center rounded-2xl bg-[#eee9dc] text-[#8a7955]"><Target size={20}/></div><div className="text-sm font-medium text-[#4d5148]">还没有共同小金库</div><p className="mt-1 text-xs text-[#8a8579]">为旅行、礼物或共同计划创建一个目标，一起积累进度。</p></div>}
     </div>
   );
 }
