@@ -16,6 +16,8 @@
   isolation: isolate;
   position: relative;
   z-index: 40;
+  min-width: 0;
+  overflow-x: hidden;
   background: var(--wallet-wash);
 }
 .wallet-private-bank.page-shell > .page-header,
