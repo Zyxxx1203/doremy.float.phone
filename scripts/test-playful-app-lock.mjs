@@ -42,7 +42,8 @@ assert.match(activity, /updateCountdown\(\)/, "the lock screen must show remaini
 assert.match(activity, /TYPE_CLASS_NUMBER or InputType\.TYPE_NUMBER_VARIATION_PASSWORD/, "six-digit native password should use a numeric keypad");
 assert.match(main, /o\.optString\("sessionId"\)/, "the native bridge must receive the originating session id");
 assert.match(main, /fun appLockTemporaryPass\(minutes: Int\)/, "the native bridge must expose temporary passes to the role tool");
-assert.match(executor, /sessionId: context\?\.sessionId/, "the role tool must pass its chat session to native");
+assert.match(executor, /sessionId: resolveAppLockChatSessionId\(characterId\)/, "the role tool must pass the character's private chat session to native");
+assert.match(executor, /filter\(session => !session\.isGroup/, "the lock screen must never route negotiation to a group chat");
 assert.match(executor, /durationMinutes: Math\.max\(1, Math\.min\(360/, "the role tool must clamp requested duration");
 assert.doesNotMatch(host, /device\.appLock\.reveal/, "custom-app host must not expose the password reveal action");
 assert.doesNotMatch(runner, /appLockReveal: function/, "custom-app SDK must not expose native password reveal");
