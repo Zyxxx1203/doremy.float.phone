@@ -65,6 +65,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
   const [characters, setCharacters] = useState(() => loadCharacters());
   const [familyCards, setFamilyCards] = useState<FamilyCard[]>(() => loadFamilyCards());
   const [jointFunds, setJointFunds] = useState<JointFund[]>(() => loadJointFunds());
+  const [selectedCharacterId, setSelectedCharacterId] = useState(() => loadCharacters()[0]?.id || "");
   const [tick, setTick] = useState(0);
   const [quickEntry, setQuickEntry] = useState<"income" | "expense" | null>(null);
   const [quickAmount, setQuickAmount] = useState("");
@@ -100,10 +101,14 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
     setQuickEntry(null); setQuickAmount(""); setQuickTitle(""); refresh();
   };
 
-  const totalLedger = useMemo(
-    () => { void tick; return characters.reduce((sum, c) => sum + (loadCharacterLedger(c.id)?.balance || 0), 0); },
-    [characters, tick],
-  );
+  const activeCharacterId = characters.some(character => character.id === selectedCharacterId)
+    ? selectedCharacterId
+    : characters[0]?.id || "";
+  const selectedCharacter = characters.find(character => character.id === activeCharacterId);
+  const selectedCharacterLedger = useMemo(() => {
+    void tick;
+    return activeCharacterId ? loadCharacterLedger(activeCharacterId) : null;
+  }, [activeCharacterId, tick]);
   const currentMonthFlow = useMemo(() => {
     const now = new Date();
     const rows = wallet.transactions.filter(tx => {
@@ -134,7 +139,8 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
             <div className="mt-1 text-3xl font-semibold" style={{color:"#f5f0e4",fontFamily:"Georgia,serif"}}>{money(wallet.balance)}</div>
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-[var(--c-icon)]">
               <button type="button" onClick={() => setTab("accounts")} className="underline underline-offset-4">银行卡 {wallet.cards.length} 张 · 管理</button>
-              <span>我给角色 {familyCards.filter(card => card.issuerType === "user").length} 张 · 角色给我 {familyCards.filter(card => card.issuerType === "character").length} 张</span>
+              <span>可用亲属卡：{familyCards.filter(card => card.issuerType === "character" && card.status === "active" && card.usedThisPeriod < card.monthlyLimit).length} 张</span>
+              <span>发放亲属卡：{familyCards.filter(card => card.issuerType === "user").length} 张</span>
               <span>小金库 {jointFunds.length} 个</span>
             </div>
           </div>
@@ -161,9 +167,17 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
             </div>}
           </div>
           <div className="wallet-section rounded-2xl p-4">
-            <div className="wallet-kicker mb-1">CHARACTER ASSETS</div><div className="text-sm font-medium text-[var(--c-text)]">角色账本总余额</div>
-            <div className="mt-1 text-xl font-semibold text-[var(--c-text)]">{money(totalLedger)}</div>
-            <div className="mt-1 text-xs text-[var(--c-icon)]">每个角色的收入/支出在「角色账本」里查看</div>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="min-w-0"><div className="wallet-kicker mb-1">CHARACTER ASSETS</div><div className="text-sm font-medium text-[var(--c-text)]">{selectedCharacter ? `${selectedCharacter.name} 的账本余额` : "角色账本"}</div></div>
+              {characters.length > 0 && <select aria-label="选择角色账本" value={activeCharacterId} onChange={event => setSelectedCharacterId(event.target.value)} className="ui-select max-w-[46%] text-xs">{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select>}
+            </div>
+            <div className="text-xl font-semibold text-[var(--c-text)]">{money(selectedCharacterLedger?.balance || 0)}</div>
+            <div className="mt-1 text-xs text-[var(--c-icon)]">{selectedCharacter ? `当前查看：${selectedCharacter.name} · 不包含其他角色余额` : "还没有角色账本"}</div>
+            <div className="mt-3 flex flex-col gap-2">
+              {(selectedCharacterLedger?.transactions || []).slice(-3).reverse().map(tx => <div key={tx.id} className="flex items-center justify-between gap-3 text-xs"><div className="min-w-0"><div className="truncate text-[var(--c-text)]">{tx.note || tx.category}</div><div className="text-[10px] text-[var(--c-icon)]">{time(tx.at)} · {tx.category}</div></div><span className={tx.amount < 0 ? "shrink-0 text-rose-500" : "shrink-0 text-emerald-600"}>{tx.amount < 0 ? "−" : "+"}{money(Math.abs(tx.amount))}</span></div>)}
+              {!selectedCharacterLedger?.transactions.length && <div className="text-xs text-[var(--c-icon)]">这位角色还没有收支记录</div>}
+            </div>
+            <button type="button" onClick={() => setTab("ledger")} className="mt-3 text-xs font-medium text-[var(--c-primary)]">查看完整账本与设置 →</button>
           </div>
           <div className="wallet-section rounded-2xl p-4">
             <div className="mb-2 flex items-center justify-between"><span className="text-sm font-medium text-[var(--c-text)]">最近流水</span><span className="text-xs text-[var(--c-icon)]">共 {wallet.transactions.length} 条</span></div>
@@ -182,7 +196,7 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
 
       {tab === "family" && <FamilyTab characters={characters} cards={familyCards} onChange={refresh} />}
       {tab === "joint" && <JointTab characters={characters} funds={jointFunds} onChange={refresh} />}
-      {tab === "ledger" && <LedgerTab characters={characters} />}
+      {tab === "ledger" && <LedgerTab characters={characters} selectedCharacterId={activeCharacterId} onSelectCharacter={setSelectedCharacterId} />}
       {(["budget","goals","bills","calendar","insights"] as WalletPlanningTab[]).includes(tab as WalletPlanningTab) && <WalletPlanningTabs tab={tab as WalletPlanningTab} onChange={refresh} />}
     </PageShell>
   );
@@ -190,7 +204,6 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
 
 function FamilyTab({ characters, cards, onChange }: { characters: ReturnType<typeof loadCharacters>; cards: FamilyCard[]; onChange: () => void }) {
   const [characterId, setCharacterId] = useState(characters[0]?.id || "");
-  const [issuer, setIssuer] = useState<"user" | "character">("user");
   const [label, setLabel] = useState("随便花卡");
   const [limit, setLimit] = useState("500");
   const [spendAmount, setSpendAmount] = useState("10");
@@ -201,12 +214,12 @@ function FamilyTab({ characters, cards, onChange }: { characters: ReturnType<typ
     if (!label.trim()) { setMessage("给这张卡起个名字吧。"); return; }
     const value = Number(limit);
     if (!Number.isFinite(value) || value <= 0) { setMessage("请输入有效的每月额度。"); return; }
-    createFamilyCard({
-      issuerType: issuer, issuerId: issuer === "user" ? "user" : characterId,
-      beneficiaryType: issuer === "user" ? "character" : "user",
-      beneficiaryId: issuer === "user" ? characterId : "user",
-      label: label.trim(), monthlyLimit: value,
-    });
+    try {
+      createFamilyCard({ beneficiaryId: characterId, label: label.trim(), monthlyLimit: value });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "创建亲属卡失败");
+      return;
+    }
     setMessage("亲属卡已创建，可以开始使用了。");
     notify("已创建亲属卡");
     onChange();
@@ -225,21 +238,14 @@ function FamilyTab({ characters, cards, onChange }: { characters: ReturnType<typ
           <div>
             <div className="wallet-form-eyebrow">CREATE A FAMILY CARD</div>
             <h3>开一张亲属卡</h3>
-            <p>先选择开卡方，再设置持卡人和每月额度。</p>
+            <p>由你发放给角色使用，消费从你的钱包扣除。</p>
           </div>
           <span className="wallet-form-mark">¥</span>
         </div>
 
         <div className="wallet-form-field">
-          <span className="wallet-form-label">开卡方向</span>
-          <div className="wallet-form-segmented" role="group" aria-label="开卡方向">
-            <button type="button" aria-pressed={issuer === "user"} onClick={() => setIssuer("user")} className={issuer === "user" ? "is-selected" : ""}>
-              <strong>我来开卡</strong><small>给角色使用</small>
-            </button>
-            <button type="button" aria-pressed={issuer === "character"} onClick={() => setIssuer("character")} className={issuer === "character" ? "is-selected" : ""}>
-              <strong>角色开给我</strong><small>由 TA 提供额度</small>
-            </button>
-          </div>
+          <span className="wallet-form-label">发卡方</span>
+          <div className="wallet-form-control flex items-center justify-between"><strong>我</strong><span className="text-xs text-[var(--c-icon)]">发放给下方选择的角色</span></div>
         </div>
 
         <label className="wallet-form-field">
@@ -325,7 +331,6 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
   const [name, setName] = useState("旅行基金");
   const [goal, setGoal] = useState("5000");
   const [amount, setAmount] = useState("100");
-  const [member, setMember] = useState<"user" | "character">("user");
   const [message, setMessage] = useState("");
 
   const create = () => {
@@ -342,7 +347,7 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
   const deposit = (fund: JointFund) => {
     const value = Number(amount);
     if (!Number.isFinite(value) || value <= 0) { notify("请输入有效的存入金额。", "error"); return; }
-    const result = depositToJointFund(fund.id, member, member === "user" ? "user" : fund.characterId, value, "手动存入");
+    const result = depositToJointFund(fund.id, "user", "user", value, "手动存入");
     if (!result.ok) notify(result.error || "操作失败", "error"); else notify("存入成功");
     onChange();
   };
@@ -350,9 +355,9 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
   const createPlan = (fund: JointFund) => {
     const value = Number(amount);
     if (!Number.isFinite(value) || value <= 0) { notify("请输入有效的自动存入金额。", "error"); return; }
-    setJointFundPlan({ fundId: fund.id, memberType: member, memberId: member === "user" ? "user" : fund.characterId, cadence: "weekly", amount: value });
+    setJointFundPlan({ fundId: fund.id, memberType: "user", memberId: "user", cadence: "weekly", amount: value });
     onChange();
-    notify(`已设置${member === "user" ? "你" : "TA"}每周自动存入`);
+    notify("已设置你每周自动存入");
   };
 
   return (
@@ -410,13 +415,7 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
             <div className="mt-1 flex justify-between text-[10px] text-[var(--c-icon)]"><span>{Math.min(100, Math.round(fund.balance / fund.goalAmount * 100))}% 已完成</span><span>{fund.balance >= fund.goalAmount ? "目标已达成" : `还差 ${money(fund.goalAmount - fund.balance)}`}</span></div>
 
             <div className="wallet-joint-deposit">
-              <div className="wallet-form-field">
-                <span className="wallet-form-label">本次由谁存入</span>
-                <div className="wallet-form-segmented wallet-form-segmented-compact" role="group" aria-label="存入人">
-                  <button type="button" aria-pressed={member === "user"} onClick={() => setMember("user")} className={member === "user" ? "is-selected" : ""}><strong>我来存</strong></button>
-                  <button type="button" aria-pressed={member === "character"} onClick={() => setMember("character")} className={member === "character" ? "is-selected" : ""}><strong>TA 来存</strong></button>
-                </div>
-              </div>
+              <div className="rounded-xl bg-[#f3f1e9] px-3 py-2 text-xs text-[#777365]">本次存款由你本人从钱包余额支付。角色想参与时，会由 TA 自己决定并通过角色工具存入。</div>
               <label className="wallet-form-field">
                 <span className="wallet-form-label">存入金额</span>
                 <span className="wallet-form-currency">
@@ -428,7 +427,7 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
             </div>
 
             <div className="wallet-joint-plan-row">
-              <button type="button" onClick={() => createPlan(fund)} className="wallet-form-secondary">为{member === "user" ? "我" : "TA"}设置每周自动存入</button>
+              <button type="button" onClick={() => createPlan(fund)} className="wallet-form-secondary">为我设置每周自动存入</button>
               {plans.map(plan => <button type="button" key={plan.id} onClick={() => { removeJointFundPlan(plan.id); onChange(); }} className="wallet-form-plan-chip">{plan.memberType === "user" ? "我" : "TA"} · {plan.cadence === "weekly" ? "每周" : plan.cadence === "daily" ? "每日" : "每月"} {money(plan.amount)} · 取消</button>)}
             </div>
             {txs.slice(0, 3).map(tx => <div key={tx.id} className="mt-2 flex justify-between text-[11px] text-[var(--c-icon)]"><span>{time(tx.at)} · {tx.note}</span><span>{money(tx.amount)}</span></div>)}
@@ -440,11 +439,17 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
   );
 }
 
-function LedgerTab({ characters }: { characters: ReturnType<typeof loadCharacters> }) {
+function LedgerTab({ characters, selectedCharacterId, onSelectCharacter }: {
+  characters: ReturnType<typeof loadCharacters>;
+  selectedCharacterId: string;
+  onSelectCharacter: (id: string) => void;
+}) {
+  const selected = characters.find(character => character.id === selectedCharacterId) || characters[0];
   return (
     <div className="flex flex-col gap-3">
-      <div className="px-1 pb-1"><div className="wallet-kicker mb-1">CHARACTER FINANCE</div><div className="text-xl font-semibold text-[#292b25]">角色账本</div><p className="mt-1 text-[11px] text-[#898579]">查看每位角色的资产、固定收入和近期收支。</p></div>
-      {characters.map(character => <CharacterLedgerCard key={character.id} character={character} />)}
+      <div className="px-1 pb-1"><div className="wallet-kicker mb-1">CHARACTER FINANCE</div><div className="text-xl font-semibold text-[#292b25]">角色账本</div><p className="mt-1 text-[11px] text-[#898579]">切换角色查看对应余额、流水和固定收入设置；每位角色的账目彼此独立。</p></div>
+      {characters.length > 0 && <label className="wallet-section flex items-center gap-3 rounded-2xl p-3"><span className="shrink-0 text-xs text-[var(--c-icon)]">当前角色</span><select value={selected?.id || ""} onChange={event => onSelectCharacter(event.target.value)} className="ui-select min-w-0 flex-1">{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select></label>}
+      {selected && <CharacterLedgerCard key={selected.id} character={selected} />}
       {characters.length === 0 && <div className="rounded-2xl bg-[var(--c-card)] p-6 text-center text-sm text-[var(--c-icon)]">还没有角色</div>}
     </div>
   );
