@@ -299,12 +299,12 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
   return (
     <PageShell title="余额管理" onBack={onBack} className="wallet-page-root">
       <style>{`
-        .wallet-page-root {
+        .wallet-page-root.page-shell {\n          position: relative;\n          z-index: 40;\n          isolation: isolate;
           background: #f2f0e9 !important;
           color: #22251f;
         }
-        .wallet-page-root .page-header { background: #f2f0e9 !important; border-bottom: 1px solid rgba(88,82,65,.14); }
-        .wallet-page-root .page-body { background: radial-gradient(ellipse at 85% 0%,rgba(190,169,119,.13),transparent 38%),#f2f0e9; }
+        .wallet-page-root .page-header { z-index: 20; background: #f2f0e9 !important; border-bottom: 1px solid rgba(88,82,65,.14); }
+        .wallet-page-root .page-body { padding-top: calc(var(--page-header-safe-top,48px) + var(--page-header-content-height,42px) + 12px); background: radial-gradient(ellipse at 85% 0%,rgba(190,169,119,.13),transparent 38%),#f2f0e9; }
         .wallet-page-root h2 { font-family: Georgia,"Noto Serif SC",serif; letter-spacing:.035em; }
         .wallet-page-root .cp-premium-bank-card { border-radius: 20px; border:1px solid rgba(255,255,255,.22); }
         .wallet-page-root .wallet-card-stack .cp-premium-bank-card { transform:translateY(0); transition:transform .28s ease,box-shadow .28s ease; }
