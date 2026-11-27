@@ -3015,7 +3015,33 @@ export function LifeEngineApp({ onClose, initialCharacterId }: { onClose?: () =>
           "输入资料：\n\n" + sourceBlocks.join("\n\n").slice(0, 42000),
         ].join("\n\n"),
       };
-      const result = await generateOfflineChatCompletion(session, [prompt], { appId: "life", appTags: lifeAppTags("schedule"), includeDirectChatEntries: false, worldBookIdsOverride: sourceType === "worldbook" && selectedBook ? [selectedBook.id] : [], worldBookActivationContext: "" });
+      const result = await generateOfflineChatCompletion(session, [prompt], {
+        appId: "life",
+        appTags: lifeAppTags("schedule"),
+        includeDirectChatEntries: false,
+        worldBookIdsOverride: [],
+        worldBookActivationContext: "",
+        isolatedPromptContext: true,
+        toolsAllowed: false,
+        promptProfile: {
+          id: "life-location-source-isolation",
+          label: "地点来源隔离",
+          enableWorldBooks: false,
+          enableRegexes: false,
+          exclude: [
+            "personaDescription",
+            "worldInfoBefore",
+            "charDescription",
+            "charPersonality",
+            "characterRelations",
+            "worldInfoAfter",
+            "dwellingContext",
+            "calendarSchedule",
+            "memoryCore",
+            "memoryLongTerm",
+          ],
+        },
+      });
       const raw = result.content.trim();
       const first = raw.indexOf("["), last = raw.lastIndexOf("]");
       if (first < 0 || last <= first) throw new Error("模型没有返回 JSON 数组。模型原始回复：" + raw.slice(0, 360));
