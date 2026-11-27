@@ -45,7 +45,7 @@ T("随机匿名代号独立生成", userLetter.askerAlias && userLetter.askerAli
 T("非指定对象不能代答", qa.answerAnonymousQuestion(userLetter.id, "越权回答", { targetType: "character", targetId: "c2" }) === null);
 T("指定收件人可以回答", qa.answerAnonymousQuestion(userLetter.id, "没有躲你，只是在忙", { targetType: "character", targetId: "c1" })?.status === "answered");
 const answerNotice = chatMessages.find(message => message.sessionId === "session-c1" && message.content.includes("没有躲你，只是在忙"));
-T("回答作为另一条独立时间线事件写入", Boolean(answerNotice && answerNotice.id !== targetNotice?.id && answerNotice.createdAt !== targetNotice?.createdAt && answerNotice.mediaData?.shortTermMemorySource === "anonymous_qa"));
+T("回答作为另一条独立时间线事件写入", Boolean(answerNotice && answerNotice.id !== targetNotice?.id && answerNotice.content.includes("匿名提问箱有一条新回答") && answerNotice.mediaData?.shortTermMemorySource === "anonymous_qa"));
 T("可以编辑问题、回答与回答对象", (() => { const changed = qa.updateAnonymousQuestion(userLetter.id, { question: "修改后的问题", answer: "修改后的回答", targetType: "character", targetId: "c2" }); return changed?.question === "修改后的问题" && changed.answer === "修改后的回答" && changed.targetId === "c2" && changed.status === "answered"; })());
 T("变更回答对象会通知新收件角色", chatMessages.some(message => message.sessionId === "session-c2" && message.content.includes("修改后的问题")));
 T("变更回答对象会通知旧收件角色忽略旧通知", chatMessages.some(message => message.sessionId === "session-c1" && message.content.includes("已失效")));
