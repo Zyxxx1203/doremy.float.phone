@@ -23,6 +23,7 @@ assert.match(service, /passUntil/, "temporary pass must be tracked natively");
 assert.match(service, /isProtectedTarget\(context, target\)/, "protected targets must be rejected in native code");
 assert.match(service, /com\.android\.settings/, "Android Settings must be protected");
 assert.match(service, /monitoringAvailable/, "status must report whether foreground monitoring has a source");
+assert.match(service, /缺少前台应用监测能力/, "lock activation must fail rather than pretend to work without a monitor");
 assert.match(service, /current_package_updated_at/, "accessibility fallback must reject stale foreground state");
 assert.match(read("android-shell/app/src/main/java/app/floatphone/shell/CallControlService.kt"), /current_package_updated_at/, "accessibility service must publish a foreground heartbeat");
 assert.match(service, /now - lastShowAt > 2500L/, "returning to a blocked app must be re-intercepted promptly");
