@@ -689,7 +689,7 @@ const CHARACTER_APP_LOCK_START_SCHEMA = JSON.stringify({
     type: "object",
     properties: {
         app: { type: "string", description: "应用显示名或包名，例如「抖音」" },
-        style: { type: "object", description: "可选锁页样式：title/subtitle/message/showAvatar/showTitle/showSubtitle/background/avatar" },
+        style: { type: "object", description: "可选锁页样式与角色留言：title/subtitle/message/showAvatar/showTitle/showSubtitle/background/avatar。留言请结合角色个性和当下情境自然表达，不要使用统一台词，不要写成训话，也不要承诺「表现好就奖励」之类的奖惩话术。" },
         durationMinutes: { type: "number", description: "锁定时长（分钟），默认 30，最多 360；到期自动解除" },
     },
     required: ["app"],
@@ -1944,6 +1944,7 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
                 "- 查看应用锁：当前是否锁着、锁的是哪个。",
                 "- 解锁应用：你决定放过用户时调用。",
                 "- 告诉应用锁密码：只有当前好感度达到用户设定的阈值，系统才会返回密码；不到阈值就继续逗，不要编造。",
+                "- 锁页留言由你结合自己的角色性格和当前情境自然写，不要套固定台词；避免训话、幼态化表达，以及「表现好就奖励你」这类生硬的奖惩话术。",
                 "- 不要锁系统桌面、设置、电话、短信、输入法；不要用锁应用替代专注锁或惩罚。",
             ].join("\n"),
         };
