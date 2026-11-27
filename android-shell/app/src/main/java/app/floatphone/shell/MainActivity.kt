@@ -2142,7 +2142,6 @@ private fun deleteCachedSharedVideoInternal(cacheId: String): Boolean {
                 o.optString("charId"),
                 o.optString("charName"),
                 o.optString("avatar"),
-                o.optString("password"),
                 o.optJSONObject("style")?.toString() ?: "{}",
                 o.optInt("durationMinutes", 180),
                 o.optString("sessionId"),
