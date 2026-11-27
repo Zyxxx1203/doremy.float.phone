@@ -37,6 +37,7 @@ type DeviceActionBridgeLike = {
   consumeScheduledFocus?: () => string;
   appLockStart?: (json: string) => string;
   appLockStop?: () => string;
+  appLockTemporaryPass?: (minutes: number) => string;
   appLockStatus?: () => string;
   appLockReveal?: () => string;
   scheduleFocusPassCheckIn?: (json: string) => string;
@@ -204,6 +205,16 @@ export function appLockStop(): DeviceActionResult {
     return parseResult(raw, "小手段停止失败");
   } catch {
     return { ok: false, reason: "小手段停止失败" };
+  }
+}
+
+export function appLockTemporaryPass(minutes: number): DeviceActionResult {
+  try {
+    const raw = bridge()?.appLockTemporaryPass?.(Math.max(1, Math.min(5, Math.round(minutes))));
+    if (raw === undefined) return { ok: false, reason: "当前 App 版本不支持临时通行证" };
+    return parseResult(raw, "临时通行证发放失败");
+  } catch {
+    return { ok: false, reason: "临时通行证发放失败" };
   }
 }
 
