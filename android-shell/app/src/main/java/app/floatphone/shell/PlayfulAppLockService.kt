@@ -64,6 +64,7 @@ class PlayfulAppLockService : Service() {
             .putString("label", intent?.getStringExtra("label") ?: prefs.getString("label", "") ?: "")
             .putString("password", intent?.getStringExtra("password") ?: prefs.getString("password", "") ?: "")
             .putString("charId", intent?.getStringExtra("charId") ?: prefs.getString("charId", "") ?: "")
+            .putString("sessionId", intent?.getStringExtra("sessionId") ?: prefs.getString("sessionId", "") ?: "")
             .putString("charName", intent?.getStringExtra("charName") ?: prefs.getString("charName", "") ?: "")
             .putString("avatar", intent?.getStringExtra("avatar") ?: prefs.getString("avatar", "") ?: "")
             .putString("style", intent?.getStringExtra("style") ?: prefs.getString("style", "{}") ?: "{}")
@@ -241,6 +242,7 @@ class PlayfulAppLockService : Service() {
             requestedPassword: String,
             styleJson: String = "{}",
             durationMinutes: Int = 180,
+            sessionId: String = "",
         ): JSONObject {
             if (target.isBlank()) return JSONObject().put("ok", false).put("reason", "没有选择应用")
             if (isProtectedTarget(context, target)) {
@@ -249,7 +251,7 @@ class PlayfulAppLockService : Service() {
             val installed = runCatching { context.packageManager.getApplicationInfo(target, 0) }.isSuccess
             if (!installed) return JSONObject().put("ok", false).put("reason", "目标应用已不存在或未安装")
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            if (prefs.getBoolean("running", false)) {
+            if (prefs.getBoolean("running", false) && (prefs.getLong("expiresAt", 0L) == 0L || prefs.getLong("expiresAt", 0L) > System.currentTimeMillis())) {
                 val existingCharId = prefs.getString("charId", "") ?: ""
                 val existingTarget = prefs.getString("target", "") ?: ""
                 if (existingCharId != charId || existingTarget != target) {
@@ -269,6 +271,7 @@ class PlayfulAppLockService : Service() {
                 .putExtra("password", password)
                 .putExtra("style", styleJson)
                 .putExtra("expiresAt", expiresAt)
+                .putExtra("sessionId", sessionId)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
             else context.startService(intent)
             return JSONObject().put("ok", true).put("expiresAt", expiresAt).put("durationMinutes", boundedMinutes)
