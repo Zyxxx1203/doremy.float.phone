@@ -32,6 +32,8 @@ assert.match(executor, /getEnabledTools\(context\?\.appId \?\? "chat"\)/);
 assert.match(executor, /getInternalCapabilitySubToolDefinitions/);
 assert.match(executor, /uniqueMatches\.length === 1/);
 assert.match(executor, /call = resolveNativeToolCall\(call, context\)/);
+assert.match(chat, /nameMap\.set\(nativeName, displayName\)/, "provider-only aliases must retain their Chinese display label");
+assert.match(executor, /return \{ \.\.\.call, name: exact \}/, "provider action aliases must resolve back to canonical display names before execution");
 assert.match(executor, /makeNativeToolName\(expandedName\(displayName\), usedNames\)/);
 
 console.log("Native tool name resolution checks passed.");
