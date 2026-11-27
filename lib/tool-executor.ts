@@ -2797,7 +2797,7 @@ async function executeCharacterEconomyTool(call: ToolCall, context?: ToolExecuti
             const funds = loadJointFunds().filter(fund => fund.characterId === characterId);
             const lines = funds.map(fund => {
                 const txs = loadJointFundTransactions(fund.id).slice(0, 5).map(tx => `${tx.memberType === "user" ? "用户" : "你"}${tx.kind === "deposit" ? "存入" : "取出"} ¥${tx.amount} · ${tx.note}`);
-                return `${fund.id} · ${fund.name} · 目标 ¥${fund.goalAmount} · 已攒 ¥${fund.balance}\n${txs.join("\n")}`;
+                return `${fund.id} · ${fund.name} · 状态：${fund.status === "completed" ? "目标已达成" : fund.status === "paused" ? "已暂停" : "进行中"} · 目标 ¥${fund.goalAmount} · 已攒 ¥${fund.balance}\n${txs.join("\n")}`;
             });
             return { name: call.name, success: true, data: lines.length ? lines.join("\n\n") : "现在没有共同小金库", userNotice: lines.length ? "看了看共同小金库" : "没有共同小金库" };
         }
