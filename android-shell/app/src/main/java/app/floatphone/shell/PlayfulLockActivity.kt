@@ -25,7 +25,7 @@ import android.widget.TextView
 import android.widget.Toast
 import org.json.JSONObject
 
-/** 角色小手段互动页：角色对白、求情入口、临时通行和明确的紧急解除。 */
+/** 角色应用限制互动页：角色留言、返回私聊、密码解锁与倒计时。 */
 class PlayfulLockActivity : Activity() {
     private var input: EditText? = null
     private var errorText: TextView? = null
@@ -72,7 +72,7 @@ class PlayfulLockActivity : Activity() {
         val scroll = ScrollView(this).apply { isFillViewport = true; addView(root) }
 
         root.addView(TextView(this).apply {
-            text = "✦  TA 的专属小手段  ✦"
+            text = "TA 的专属小手段"
             setTextColor(0xFFC9B9FF.toInt()); textSize = 12f; letterSpacing = 0.12f; gravity = Gravity.CENTER
         }, matchWrap().apply { bottomMargin = dp(18) })
 
@@ -95,14 +95,14 @@ class PlayfulLockActivity : Activity() {
 
         if (styleObj.optBoolean("showTitle", true)) {
             root.addView(TextView(this).apply {
-                text = styleObj.optString("title", "").trim().ifBlank { "${charName} 暂时保管了这里" }
+                text = styleObj.optString("title", "").trim().ifBlank { "${charName} 想和你商量一件事" }
                 setTextColor(Color.WHITE); textSize = 25f; typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER; setPadding(0, dp(18), 0, dp(8))
             }, matchWrap())
         }
         val message = styleObj.optString("message", "").trim()
             .ifBlank { styleObj.optString("subtitle", "").trim() }
-            .ifBlank { "「${label}」先放一放嘛。回来陪我说两句话；表现好一点，我也许会给你一张临时通行证。" }
+            .ifBlank { "「${label}」先放一放吧。回来和我聊两句，好吗？" }
         if (styleObj.optBoolean("showSubtitle", true)) {
             root.addView(TextView(this).apply {
                 text = "“${message}”"; setTextColor(0xFFE1E5F0.toInt()); textSize = 15f
@@ -116,7 +116,7 @@ class PlayfulLockActivity : Activity() {
             setPadding(dp(18), dp(14), dp(18), dp(14)); background = rounded(0x33232D45, 0x66FFFFFF, 18)
         }
         appCard.addView(TextView(this).apply {
-            text = "TA 暂时保管的应用"; setTextColor(0xFFB7C0D3.toInt()); textSize = 11f; gravity = Gravity.CENTER
+            text = "本次限制的应用"; setTextColor(0xFFB7C0D3.toInt()); textSize = 11f; gravity = Gravity.CENTER
         })
         appCard.addView(TextView(this).apply {
             text = label; setTextColor(Color.WHITE); textSize = 20f; typeface = Typeface.DEFAULT_BOLD
@@ -127,7 +127,7 @@ class PlayfulLockActivity : Activity() {
         root.addView(appCard, matchWrap().apply { bottomMargin = dp(18) })
 
         input = EditText(this).apply {
-            hint = "输入 TA 的六位密码"; setTextColor(Color.WHITE); setHintTextColor(0xFF9BA6BA.toInt())
+            hint = "输入解锁密码"; setTextColor(Color.WHITE); setHintTextColor(0xFF9BA6BA.toInt())
             textSize = 17f; gravity = Gravity.CENTER
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
             filters = arrayOf(InputFilter.LengthFilter(6))
@@ -141,7 +141,7 @@ class PlayfulLockActivity : Activity() {
         }
         root.addView(errorText, matchWrap())
 
-        root.addView(actionButton("回去找 ${charName} 讨价还价", 0xFF8976D8.toInt(), Color.WHITE) {
+        root.addView(actionButton("去找TA求情", 0xFF8976D8.toInt(), Color.WHITE) {
             val sessionId = prefs.getString("sessionId", "") ?: ""
             val chatUrl = if (sessionId.isNotBlank()) MainActivity.SITE_URL.trimEnd('/') + "/#open-chat=" + android.net.Uri.encode(sessionId) else ""
             startActivity(Intent(this@PlayfulLockActivity, MainActivity::class.java).apply {
@@ -150,15 +150,10 @@ class PlayfulLockActivity : Activity() {
             })
             finish()
         }, matchWrap().apply { topMargin = dp(12) })
-        root.addView(actionButton("输入密码，直接解锁", 0x332C3852, 0xFFE3E8F4.toInt(), true) { tryUnlock() },
+        root.addView(actionButton("确认解锁", 0x332C3852, 0xFFE3E8F4.toInt(), true) { tryUnlock() },
             matchWrap().apply { topMargin = dp(9) })
-        root.addView(actionButton("紧急解除这次锁定", 0x22FFFFFF, 0xFFFFC3C9.toInt(), true) {
-            PlayfulAppLockService.stop(this@PlayfulLockActivity)
-            Toast.makeText(this@PlayfulLockActivity, "已紧急解除应用锁。", Toast.LENGTH_SHORT).show()
-            finish()
-        }, matchWrap().apply { topMargin = dp(9) })
         root.addView(TextView(this).apply {
-            text = "这是角色互动玩法，不是安全锁。你始终可以紧急解除。"
+            text = "本次限制会在倒计时结束后自动解除；想提前结束，可以回到聊天和 ${charName} 商量。"
             setTextColor(0xFF9BA6BA.toInt()); textSize = 10f; gravity = Gravity.CENTER
             setPadding(dp(8), dp(18), dp(8), dp(4))
         }, matchWrap())
@@ -179,11 +174,11 @@ class PlayfulLockActivity : Activity() {
         val entered = input?.text?.toString()?.trim().orEmpty()
         if (entered.isNotEmpty() && entered == expected) {
             PlayfulAppLockService.stop(this)
-            Toast.makeText(this, "门开了。", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "已解锁。", Toast.LENGTH_SHORT).show()
             finish()
         } else {
             input?.setText("")
-            errorText?.text = "密码不对。回去和 TA 商量商量？"
+            errorText?.text = "密码不正确，可以回到聊天问问 TA。"
             input?.animate()?.translationX(18f)?.setDuration(60)?.withEndAction {
                 input?.animate()?.translationX(-18f)?.setDuration(60)?.withEndAction {
                     input?.animate()?.translationX(0f)?.setDuration(60)?.start()
@@ -193,17 +188,17 @@ class PlayfulLockActivity : Activity() {
     }
 
     private fun updateCountdown() {
-        if (expiresAt <= 0L) { expiryText?.text = "可随时解除"; return }
+        if (expiresAt <= 0L) { expiryText?.text = "等待角色解除"; return }
         val remaining = expiresAt - System.currentTimeMillis()
         if (remaining <= 0L) {
-            expiryText?.text = "这次小手段已经到期"
+            expiryText?.text = "本次限制已结束"
             PlayfulAppLockService.stop(this); finish(); return
         }
         val totalMinutes = remaining / 60_000L
         val hours = totalMinutes / 60L
         val minutes = totalMinutes % 60L
         val seconds = (remaining / 1000L) % 60L
-        expiryText?.text = if (hours > 0) "自动结束还剩 ${hours}小时${minutes}分" else "自动结束还剩 ${minutes}分${seconds}秒"
+        expiryText?.text = if (hours > 0) "本次限制还剩 ${hours}小时${minutes}分" else "本次限制还剩 ${minutes}分${seconds}秒"
         handler.postDelayed({ updateCountdown() }, 1000L)
     }
 

@@ -8,6 +8,7 @@ import { loadWalletState, formatWalletAmount, WALLET_UPDATED_EVENT, creditWallet
 import { runDueWalletBills } from "@/lib/wallet-planning";
 import { WalletPlanningTabs, type WalletPlanningTab } from "@/components/wallet-planning-tabs";
 import { WalletPanel } from "@/components/chat/wallet-panel";
+import { WalletHeaderIsolationStyle } from "@/components/wallet-header-isolation-style";
 import { loadCharacterLedger } from "@/lib/economy/character-ledger";
 import {
   createFamilyCard, loadFamilyCardTransactions, loadFamilyCards, spendWithFamilyCard,
@@ -118,7 +119,8 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
   if (tab === "accounts") return <WalletPanel onBack={() => setTab("home")} />;
 
   return (
-    <PageShell title="钱包" onBack={onClose} className="wallet-private-bank wallet-private-bank-shell">
+    <PageShell title="钱包" onBack={onClose} className="wallet-private-bank wallet-private-bank-shell" headerClassName="wallet-app-header" headerStyle={{ background: "#f7f6f0", backgroundColor: "#f7f6f0", backgroundImage: "none", backdropFilter: "none", WebkitBackdropFilter: "none", zIndex: 50, isolation: "isolate" }}>
+      <WalletHeaderIsolationStyle />
       <div className="wallet-private-bank wallet-tab-row flex shrink-0 gap-2 overflow-x-auto px-1 pb-3">
         {TABS.map(item => (
           <button key={item.id} onClick={() => setTab(item.id)} aria-pressed={tab === item.id} className={`wallet-tab shrink-0 rounded-full px-4 py-2 text-sm transition-colors ${tab === item.id ? "" : ""}`}>{item.label}</button>
@@ -130,9 +132,9 @@ export function WalletApp({ onClose, initialTab = "home" }: Props) {
           <div className="wallet-hero rounded-3xl p-5 shadow-sm">
             <div className="wallet-kicker" style={{color:"#c7b78e"}}>PRIVATE WALLET · AVAILABLE BALANCE</div><div className="mt-2 text-[10px] tracking-[.12em] opacity-65">我的可用余额</div>
             <div className="mt-1 text-3xl font-semibold" style={{color:"#f5f0e4",fontFamily:"Georgia,serif"}}>{money(wallet.balance)}</div>
-            <div className="mt-3 flex gap-4 text-xs text-[var(--c-icon)]">
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-[var(--c-icon)]">
               <button type="button" onClick={() => setTab("accounts")} className="underline underline-offset-4">银行卡 {wallet.cards.length} 张 · 管理</button>
-              <span>亲属卡 {familyCards.length} 张</span>
+              <span>我给角色 {familyCards.filter(card => card.issuerType === "user").length} 张 · 角色给我 {familyCards.filter(card => card.issuerType === "character").length} 张</span>
               <span>小金库 {jointFunds.length} 个</span>
             </div>
           </div>
@@ -195,47 +197,91 @@ function FamilyTab({ characters, cards, onChange }: { characters: ReturnType<typ
   const [message, setMessage] = useState("");
 
   const create = () => {
-    if (!characterId) { setMessage("先创建角色"); return; }
+    if (!characterId) { setMessage("请先创建一个角色，再为 TA 开卡。"); return; }
+    if (!label.trim()) { setMessage("给这张卡起个名字吧。"); return; }
     const value = Number(limit);
-    if (!Number.isFinite(value) || value <= 0) { setMessage("额度无效"); return; }
+    if (!Number.isFinite(value) || value <= 0) { setMessage("请输入有效的每月额度。"); return; }
     createFamilyCard({
       issuerType: issuer, issuerId: issuer === "user" ? "user" : characterId,
       beneficiaryType: issuer === "user" ? "character" : "user",
       beneficiaryId: issuer === "user" ? characterId : "user",
-      label, monthlyLimit: value,
+      label: label.trim(), monthlyLimit: value,
     });
-    setMessage("已创建亲属卡"); notify("已创建亲属卡");
+    setMessage("亲属卡已创建，可以开始使用了。");
+    notify("已创建亲属卡");
     onChange();
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="px-1 pb-1"><div className="wallet-kicker mb-1">FAMILY BANKING</div><div className="text-xl font-semibold text-[#292b25]">亲属卡</div><p className="mt-1 text-[11px] text-[#898579]">为彼此开一张卡，把日常额度和消费记录管理清楚。</p></div>
-      <div className="wallet-section rounded-2xl p-4">
-        <div className="text-sm font-medium text-[var(--c-text)]">新建亲属卡</div>
-        <div className="mt-2 flex gap-2">
-          <select value={issuer} onChange={e => setIssuer(e.target.value as "user" | "character")} className="ui-select flex-1">
-            <option value="user">我给角色开卡</option>
-            <option value="character">角色给我开卡</option>
-          </select>
-          <select value={characterId} onChange={e => setCharacterId(e.target.value)} className="ui-select flex-1">
-            {characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <div className="mt-2 flex gap-2">
-          <input value={label} onChange={e => setLabel(e.target.value)} placeholder="卡名" className="ui-input flex-1" />
-          <input value={limit} onChange={e => setLimit(e.target.value)} inputMode="decimal" placeholder="月额度" className="ui-input w-28" />
-        </div>
-        <button onClick={create} disabled={!characters.length} className="ui-btn ui-btn-primary mt-2 w-full disabled:cursor-not-allowed disabled:opacity-45">创建亲属卡</button>
-        {!characters.length && <div className="mt-2 text-xs text-[#9a7650]">先创建至少一个角色，才能建立亲属卡。</div>}
-        {message && <div role="status" className="mt-2 text-xs text-[var(--c-icon)]">{message}</div>}
+    <div className="wallet-private-bank wallet-family-tab flex flex-col gap-3">
+      <div className="wallet-subpage-heading px-1 pb-1">
+        <div className="wallet-kicker mb-1">FAMILY BANKING</div>
+        <div className="text-xl font-semibold text-[#292b25]">亲属卡</div>
+        <p className="mt-1 text-[11px] text-[#898579]">为彼此准备一份日常额度，消费记录和可用金额都会清楚显示。</p>
       </div>
 
-      {cards.map(card => {
+      <section className="wallet-form-card wallet-family-create">
+        <div className="wallet-form-card-heading">
+          <div>
+            <div className="wallet-form-eyebrow">CREATE A FAMILY CARD</div>
+            <h3>开一张亲属卡</h3>
+            <p>先选择开卡方，再设置持卡人和每月额度。</p>
+          </div>
+          <span className="wallet-form-mark">¥</span>
+        </div>
+
+        <div className="wallet-form-field">
+          <span className="wallet-form-label">开卡方向</span>
+          <div className="wallet-form-segmented" role="group" aria-label="开卡方向">
+            <button type="button" aria-pressed={issuer === "user"} onClick={() => setIssuer("user")} className={issuer === "user" ? "is-selected" : ""}>
+              <strong>我来开卡</strong><small>给角色使用</small>
+            </button>
+            <button type="button" aria-pressed={issuer === "character"} onClick={() => setIssuer("character")} className={issuer === "character" ? "is-selected" : ""}>
+              <strong>角色开给我</strong><small>由 TA 提供额度</small>
+            </button>
+          </div>
+        </div>
+
+        <label className="wallet-form-field">
+          <span className="wallet-form-label">关联角色</span>
+          <select value={characterId} onChange={event => setCharacterId(event.target.value)} disabled={!characters.length} className="wallet-form-control">
+            {characters.length ? characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>) : <option value="">暂无可选角色</option>}
+          </select>
+        </label>
+
+        <div className="wallet-form-grid">
+          <label className="wallet-form-field">
+            <span className="wallet-form-label">卡片名称</span>
+            <input type="text" value={label} onChange={event => setLabel(event.target.value)} placeholder="例如：日常零花卡" maxLength={24} className="wallet-form-control" />
+          </label>
+          <label className="wallet-form-field">
+            <span className="wallet-form-label">每月额度</span>
+            <span className="wallet-form-currency">
+              <span>¥</span>
+              <input type="number" min="0.01" step="0.01" inputMode="decimal" value={limit} onChange={event => setLimit(event.target.value)} placeholder="500" />
+            </span>
+          </label>
+        </div>
+
+        <div className="wallet-form-submit-row">
+          <p>额度按自然月重置，可随时暂停或恢复。</p>
+          <button type="button" onClick={create} disabled={!characters.length} className="wallet-form-primary disabled:cursor-not-allowed disabled:opacity-45">创建亲属卡</button>
+        </div>
+        {message && <div role="status" className="wallet-form-message">{message}</div>}
+      </section>
+
+      {[...cards].sort((a, b) => Number(a.issuerType === "character") - Number(b.issuerType === "character")).map((card, index, orderedCards) => {
         const character = characters.find(c => c.id === (card.issuerType === "character" ? card.issuerId : card.beneficiaryId));
         const txs = loadFamilyCardTransactions(card.id);
         return (
-          <div key={card.id} className="wallet-section rounded-2xl p-4">
+          <div key={card.id} className="contents">
+            {(index === 0 || orderedCards[index - 1].issuerType !== card.issuerType) && (
+              <div className="px-1 pb-1 pt-2">
+                <div className="text-sm font-semibold text-[var(--c-text)]">{card.issuerType === "user" ? "我给角色的亲属卡" : "角色给我的亲属卡"}</div>
+                <div className="mt-0.5 text-[11px] text-[var(--c-icon)]">{card.issuerType === "user" ? "由我的钱包承担消费" : "由角色账本承担消费"} · {orderedCards.filter(item => item.issuerType === card.issuerType).length} 张</div>
+              </div>
+            )}
+          <div className="wallet-section rounded-2xl p-4">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-medium text-[var(--c-text)]">{card.label}</div>
@@ -245,12 +291,27 @@ function FamilyTab({ characters, cards, onChange }: { characters: ReturnType<typ
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--c-input)]"><div className="h-full rounded-full bg-[var(--c-primary)]" style={{ width: Math.min(100, card.usedThisPeriod / card.monthlyLimit * 100) + "%" }} /></div>
             <div className="mt-1 flex justify-between text-[11px] text-[var(--c-icon)]"><span>本周期已用 {money(card.usedThisPeriod)}</span><span>可用额度 {money(Math.max(0, card.monthlyLimit - card.usedThisPeriod))}</span></div>
-            <div className="mt-3 flex gap-2">
-              <input aria-label={card.label+"消费金额"} type="number" min="0.01" step="0.01" value={spendAmount} onChange={e => setSpendAmount(e.target.value)} inputMode="decimal" className="ui-input w-24" />
-              <button disabled={card.status!=="active"} onClick={() => { const r = spendWithFamilyCard(card.id, Number(spendAmount), "亲属卡消费", "亲属卡日常消费"); if (!r.ok) notify(r.error || "操作失败", "error"); else notify("消费已记录"); onChange(); }} className="ui-btn ui-btn-ghost flex-1 disabled:opacity-45">记一笔消费</button>
-              <button onClick={() => { updateFamilyCard(card.id, { status: card.status === "active" ? "paused" : "active" }); onChange(); }} className="ui-btn ui-btn-ghost">{card.status === "active" ? "暂停" : "恢复"}</button>
+            <div className="wallet-family-card-actions">
+              <label className="wallet-form-field">
+                <span className="wallet-form-label">记录一笔消费</span>
+                <span className="wallet-form-currency">
+                  <span>¥</span>
+                  <input aria-label={card.label + "消费金额"} type="number" min="0.01" step="0.01" inputMode="decimal" value={spendAmount} onChange={event => setSpendAmount(event.target.value)} />
+                </span>
+              </label>
+              <div className="wallet-family-card-buttons">
+                <button type="button" disabled={card.status !== "active"} onClick={() => {
+                  const value = Number(spendAmount);
+                  if (!Number.isFinite(value) || value <= 0) { notify("请输入有效的消费金额。", "error"); return; }
+                  const result = spendWithFamilyCard(card.id, value, "亲属卡消费", "亲属卡日常消费");
+                  if (!result.ok) notify(result.error || "操作失败", "error"); else notify("消费已记录");
+                  onChange();
+                }} className="wallet-form-primary flex-1 disabled:opacity-45">确认消费</button>
+                <button type="button" onClick={() => { updateFamilyCard(card.id, { status: card.status === "active" ? "paused" : "active" }); onChange(); }} className="wallet-form-secondary">{card.status === "active" ? "暂停使用" : "恢复使用"}</button>
+              </div>
             </div>
             {txs.slice(0, 3).map(tx => <div key={tx.id} className="mt-2 flex justify-between text-[11px] text-[var(--c-icon)]"><span>{time(tx.at)} · {tx.title}</span><span>{money(tx.amount)}</span></div>)}
+          </div>
           </div>
         );
       })}
@@ -268,29 +329,72 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
   const [message, setMessage] = useState("");
 
   const create = () => {
-    if (!characterId) { setMessage("先创建角色"); return; }
+    if (!characterId) { setMessage("请先创建一个角色，再建立共同目标。"); return; }
+    if (!name.trim()) { setMessage("给这个目标起个名字吧。"); return; }
     const value = Number(goal);
-    if (!Number.isFinite(value) || value <= 0) { setMessage("目标金额无效"); return; }
-    createJointFund({ name, goalLabel: name, goalAmount: value, userId: "user", characterId });
-    setMessage("已创建小金库"); notify("已创建小金库");
+    if (!Number.isFinite(value) || value <= 0) { setMessage("请输入有效的目标金额。"); return; }
+    createJointFund({ name: name.trim(), goalLabel: name.trim(), goalAmount: value, userId: "user", characterId });
+    setMessage("共同目标已创建。");
+    notify("已创建小金库");
     onChange();
   };
 
+  const deposit = (fund: JointFund) => {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) { notify("请输入有效的存入金额。", "error"); return; }
+    const result = depositToJointFund(fund.id, member, member === "user" ? "user" : fund.characterId, value, "手动存入");
+    if (!result.ok) notify(result.error || "操作失败", "error"); else notify("存入成功");
+    onChange();
+  };
+
+  const createPlan = (fund: JointFund) => {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) { notify("请输入有效的自动存入金额。", "error"); return; }
+    setJointFundPlan({ fundId: fund.id, memberType: member, memberId: member === "user" ? "user" : fund.characterId, cadence: "weekly", amount: value });
+    onChange();
+    notify(`已设置${member === "user" ? "你" : "TA"}每周自动存入`);
+  };
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="px-1 pb-1"><div className="wallet-kicker mb-1">SHARED SAVINGS</div><div className="text-xl font-semibold text-[#292b25]">共同小金库</div><p className="mt-1 text-[11px] text-[#898579]">一起为旅行、礼物和共同计划慢慢攒下一笔钱。</p></div>
-      <div className="wallet-section rounded-2xl p-4">
-        <div className="text-sm font-medium text-[var(--c-text)]">新建共同小金库</div>
-        <div className="mt-2 flex gap-2">
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="目标名" className="ui-input flex-1" />
-          <input value={goal} onChange={e => setGoal(e.target.value)} inputMode="decimal" placeholder="目标金额" className="ui-input w-28" />
-        </div>
-        <div className="mt-2 flex gap-2">
-          <select value={characterId} onChange={e => setCharacterId(e.target.value)} className="ui-select flex-1">{characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-          <button onClick={create} className="ui-btn ui-btn-primary">创建</button>
-        </div>
-        {message && <div className="mt-2 text-xs text-[var(--c-icon)]">{message}</div>}
+    <div className="wallet-private-bank wallet-joint-tab flex flex-col gap-3">
+      <div className="wallet-subpage-heading px-1 pb-1">
+        <div className="wallet-kicker mb-1">SHARED SAVINGS</div>
+        <div className="text-xl font-semibold text-[#292b25]">共同小金库</div>
+        <p className="mt-1 text-[11px] text-[#898579]">为旅行、礼物或共同计划设一个目标，一起慢慢积累。</p>
       </div>
+
+      <section className="wallet-form-card wallet-joint-create">
+        <div className="wallet-form-card-heading">
+          <div>
+            <div className="wallet-form-eyebrow">A PLAN TOGETHER</div>
+            <h3>新建共同目标</h3>
+            <p>选一位共同参与的角色，再设定想攒下的金额。</p>
+          </div>
+          <span className="wallet-form-mark">✧</span>
+        </div>
+
+        <label className="wallet-form-field">
+          <span className="wallet-form-label">目标名称</span>
+          <input type="text" value={name} onChange={event => setName(event.target.value)} maxLength={28} placeholder="例如：下一次旅行" className="wallet-form-control" />
+        </label>
+        <div className="wallet-form-grid">
+          <label className="wallet-form-field">
+            <span className="wallet-form-label">目标金额</span>
+            <span className="wallet-form-currency">
+              <span>¥</span>
+              <input type="number" min="0.01" step="0.01" inputMode="decimal" value={goal} onChange={event => setGoal(event.target.value)} placeholder="5000" />
+            </span>
+          </label>
+          <label className="wallet-form-field">
+            <span className="wallet-form-label">共同参与者</span>
+            <select value={characterId} onChange={event => setCharacterId(event.target.value)} disabled={!characters.length} className="wallet-form-control">
+              {characters.length ? characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>) : <option value="">暂无可选角色</option>}
+            </select>
+          </label>
+        </div>
+        <button type="button" onClick={create} disabled={!characters.length} className="wallet-form-primary wallet-form-primary-full disabled:cursor-not-allowed disabled:opacity-45">创建共同小金库</button>
+        {message && <div role="status" className="wallet-form-message">{message}</div>}
+      </section>
 
       {funds.map(fund => {
         const character = characters.find(c => c.id === fund.characterId);
@@ -303,15 +407,29 @@ function JointTab({ characters, funds, onChange }: { characters: ReturnType<type
               <div className="shrink-0 text-right"><div className="text-base font-semibold text-[#476c4e]">{money(fund.balance)}</div><div className="text-[10px] text-[var(--c-icon)]">已存入</div></div>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--c-input)]"><div className="h-full rounded-full bg-[var(--c-primary)]" style={{ width: Math.min(100, fund.balance / fund.goalAmount * 100) + "%" }} /></div>
-            <div className="mt-1 flex justify-between text-[10px] text-[var(--c-icon)]"><span>{Math.min(100,Math.round(fund.balance/fund.goalAmount*100))}% 已完成</span><span>{fund.balance>=fund.goalAmount?"目标已达成":`还差 {money(fund.goalAmount-fund.balance)}`}</span></div>
-            <div className="mt-3 flex gap-2">
-              <select value={member} onChange={e => setMember(e.target.value as "user" | "character")} className="ui-select w-24"><option value="user">我存</option><option value="character">TA 存</option></select>
-              <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" className="ui-input w-24" />
-              <button onClick={() => { const r = depositToJointFund(fund.id, member, member === "user" ? "user" : fund.characterId, Number(amount), "手动存入"); if (!r.ok) notify(r.error || "操作失败", "error"); else notify("操作成功"); onChange(); }} className="ui-btn ui-btn-primary flex-1">存入</button>
+            <div className="mt-1 flex justify-between text-[10px] text-[var(--c-icon)]"><span>{Math.min(100, Math.round(fund.balance / fund.goalAmount * 100))}% 已完成</span><span>{fund.balance >= fund.goalAmount ? "目标已达成" : `还差 ${money(fund.goalAmount - fund.balance)}`}</span></div>
+
+            <div className="wallet-joint-deposit">
+              <div className="wallet-form-field">
+                <span className="wallet-form-label">本次由谁存入</span>
+                <div className="wallet-form-segmented wallet-form-segmented-compact" role="group" aria-label="存入人">
+                  <button type="button" aria-pressed={member === "user"} onClick={() => setMember("user")} className={member === "user" ? "is-selected" : ""}><strong>我来存</strong></button>
+                  <button type="button" aria-pressed={member === "character"} onClick={() => setMember("character")} className={member === "character" ? "is-selected" : ""}><strong>TA 来存</strong></button>
+                </div>
+              </div>
+              <label className="wallet-form-field">
+                <span className="wallet-form-label">存入金额</span>
+                <span className="wallet-form-currency">
+                  <span>¥</span>
+                  <input type="number" min="0.01" step="0.01" inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} />
+                </span>
+              </label>
+              <button type="button" onClick={() => deposit(fund)} className="wallet-form-primary wallet-form-primary-full">存入小金库</button>
             </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <button onClick={() => { setJointFundPlan({ fundId: fund.id, memberType: member, memberId: member === "user" ? "user" : fund.characterId, cadence: "weekly", amount: Number(amount) || 50 }); onChange(); notify(`已设置${member === "user" ? "你" : "TA"}每周自动存入`); }} className="ui-btn ui-btn-ghost text-xs">为{member === "user" ? "我" : "TA"}设置每周自动存</button>
-              {plans.map(plan => <button key={plan.id} onClick={() => { removeJointFundPlan(plan.id); onChange(); }} className="ui-btn ui-btn-ghost text-xs">{plan.memberType === "user" ? "我" : "TA"} {plan.cadence === "weekly" ? "每周" : plan.cadence === "daily" ? "每日" : "每月"} {money(plan.amount)} · 取消</button>)}
+
+            <div className="wallet-joint-plan-row">
+              <button type="button" onClick={() => createPlan(fund)} className="wallet-form-secondary">为{member === "user" ? "我" : "TA"}设置每周自动存入</button>
+              {plans.map(plan => <button type="button" key={plan.id} onClick={() => { removeJointFundPlan(plan.id); onChange(); }} className="wallet-form-plan-chip">{plan.memberType === "user" ? "我" : "TA"} · {plan.cadence === "weekly" ? "每周" : plan.cadence === "daily" ? "每日" : "每月"} {money(plan.amount)} · 取消</button>)}
             </div>
             {txs.slice(0, 3).map(tx => <div key={tx.id} className="mt-2 flex justify-between text-[11px] text-[var(--c-icon)]"><span>{time(tx.at)} · {tx.note}</span><span>{money(tx.amount)}</span></div>)}
           </div>
